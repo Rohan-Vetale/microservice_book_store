@@ -1,12 +1,13 @@
 
 from utils import JWT
 from sqlalchemy.exc import IntegrityError
-from fastapi import FastAPI, Depends, status, Response, HTTPException
+from fastapi import FastAPI, Depends, Request, status, Response, HTTPException
 from sqlalchemy.orm import Session
 from model import User, get_db
 from schema import UserDetails, Userlogin
 from passlib.hash import sha256_crypt
 from settings import super_key
+import requests as rq
 app = FastAPI()
 jwt_handler = JWT()
 
@@ -53,6 +54,7 @@ def user_login(payload: Userlogin, response: Response, db: Session = Depends(get
         user = db.query(User).filter_by(user_name=payload.user_name).first()
         if user and sha256_crypt.verify(payload.password, user.password) and user.is_verified:
             token = jwt_handler.jwt_encode({'user_id': user.id})
+            response = rq.get(f'http://127.0.0.1:8000/set_state?token={token}')
             return {'status': 200, "message": 'Logged in successfully', 'access_token': token}
         else:
             response.status_code = status.HTTP_401_UNAUTHORIZED
@@ -84,3 +86,29 @@ def verify_user(token: str, db: Session = Depends(get_db)):
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail='Internal Server Error')
+    
+    
+@app.get('/set_state', status_code=status.HTTP_200_OK)
+def set_state(request : Request, token:str, db:Session = Depends(get_db)):
+    try:
+        print(f"recieved token is {token}")
+        decoded_token = JWT.jwt_decode(token)
+        user_id = decoded_token.get('user_id')
+        user_data = db.query(User).filter_by(id=user_id).one_or_none()
+        if not user_data:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+        global global_user_data
+        global_user_data = user_data
+    except Exception as e:
+        print(e)
+        
+@app.get('/auth_user', status_code=status.HTTP_200_OK)
+def auth_user(request: Request, db:Session = Depends(get_db)):
+    try:
+        got_id = global_user_data.id
+        if got_id is None:
+            return {'message':'The id is None', 'status_code':status.HTTP_203_NON_AUTHORITATIVE_INFORMATION,  'got_id' : 'None'}
+        
+        return {'message' : 'ID retrieved successfully','status_code' : status.HTTP_200_OK, 'got_id' : got_id}
+    except:
+        return {'message' : 'Unable to run auth_user endpoint', 'got_id' : 'None'}

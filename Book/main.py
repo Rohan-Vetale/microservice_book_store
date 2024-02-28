@@ -1,13 +1,13 @@
-""
+
 from fastapi import APIRouter, Depends, FastAPI, Request, Response, HTTPException, status
 from sqlalchemy.orm import Session
 from model import  Books, get_db
 from schema import BookSchema
-
+import requests as rq
 app = FastAPI()
 
-@app.post("/add_book/{user_id}", status_code=status.HTTP_201_CREATED, tags=["Books"])
-def add_book(payload: BookSchema, user_id: int, response: Response, db: Session = Depends(get_db)):
+@app.post("/add_book", status_code=status.HTTP_201_CREATED, tags=["Books"])
+def add_book(payload: BookSchema, response: Response, db: Session = Depends(get_db)):
     """
     Description: Add a new book.
     Parameter: payload : UserLogin object, response : Response object, db : database session.
@@ -16,6 +16,12 @@ def add_book(payload: BookSchema, user_id: int, response: Response, db: Session 
     try:
         # user_id = request.state.user.id
         book_data = payload.model_dump()
+        my_response = rq.get('http://127.0.0.1:8000/auth_user')
+        print(f"Response is {my_response}")
+        user_id = my_response.json()['got_id']
+        print(f"got id is {user_id}")
+        if user_id is None:
+            return {'message' : 'User id is none'}
         book_data["user_id"] = user_id
         book = Books(**book_data)
         book_exists = db.query(Books).filter_by(book_name = book.book_name, author = book.author).one_or_none()
