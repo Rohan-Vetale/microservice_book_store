@@ -1,4 +1,14 @@
+"""
+@Author: Rohan Vetale
 
+@Date: 2024-02-29 11:30:00
+
+@Last Modified by: Rohan Vetale
+
+@Last Modified time: 2024-02-29 11:30:00
+
+@Title :  User microservice of book store
+"""
 from utils import JWT
 from sqlalchemy.exc import IntegrityError
 from fastapi import FastAPI, Depends, Request, status, Response, HTTPException
@@ -88,27 +98,21 @@ def verify_user(token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail='Internal Server Error')
     
     
-@app.get('/set_state', status_code=status.HTTP_200_OK)
-def set_state(request : Request, token:str, db:Session = Depends(get_db)):
-    try:
-        print(f"recieved token is {token}")
-        decoded_token = JWT.jwt_decode(token)
-        user_id = decoded_token.get('user_id')
-        user_data = db.query(User).filter_by(id=user_id).one_or_none()
-        if not user_data:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
-        global global_user_data
-        global_user_data = user_data
-    except Exception as e:
-        print(e)
         
-@app.get('/auth_user', status_code=status.HTTP_200_OK)
-def auth_user(request: Request, db:Session = Depends(get_db)):
+@app.get('/auth_user',status_code=status.HTTP_200_OK)
+def auth_user(response:Response,token:str=None,db:Session = Depends(get_db)):
+    """
+    Description: This function is used to authenticate the user
+    Parameter: token : object as string, db : as database session.
+    Return: Message with status code 200 if user exists or 500 if internal server error
+    """
     try:
-        got_id = global_user_data.id
-        if got_id is None:
-            return {'message':'The id is None', 'status_code':status.HTTP_203_NON_AUTHORITATIVE_INFORMATION,  'got_id' : 'None'}
-        
-        return {'message' : 'ID retrieved successfully','status_code' : status.HTTP_200_OK, 'got_id' : got_id}
-    except:
-        return {'message' : 'Unable to run auth_user endpoint', 'got_id' : 'None'}
+        data = JWT.jwt_decode(token)
+        user_data = db.query(User).filter_by(id=data.get('user_id')).one_or_none()
+        if user_data is None:
+            raise HTTPException(detail="This user is not present ",status_code=status.HTTP_404_NOT_FOUND)
+        return {'message':"User Found",'status':200,'user_data':user_data}
+    except Exception as ex:
+        print(ex)
+        response.status_code=status.HTTP_400_BAD_REQUEST
+        return {'message':str(ex),'status':400}
