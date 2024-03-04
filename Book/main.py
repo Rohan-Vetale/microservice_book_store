@@ -1,50 +1,60 @@
+"""
+@Author: Rohan Vetale
 
+@Date: 2024-03-03 11:30:00
+
+@Last Modified by: Rohan Vetale
+
+@Last Modified time: 2024-03-04 11:30:00
+
+@Title :  Book microservice of book store
+"""
+from fastapi import FastAPI, Security, status, Response, Depends, Path, HTTPException, Request
+from Book.schema import BookSchema
+from fastapi.security import APIKeyHeader
+from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, FastAPI, Request, Response, HTTPException, status
 from sqlalchemy.orm import Session
 from model import  Books, get_db
 from schema import BookSchema
 import requests as rq
-app = FastAPI()
+from utils import jwt_authentication
+app = FastAPI(title='Book Store ',dependencies=[Security(APIKeyHeader(name='authorization')),Depends(jwt_authentication)])
 
 @app.post("/add_book", status_code=status.HTTP_201_CREATED, tags=["Books"])
-def add_book(payload: BookSchema, response: Response, db: Session = Depends(get_db)):
+def add_book(request: Request, payload: BookSchema, response: Response, db: Session = Depends(get_db)):
     """
     Description: Add a new book.
     Parameter: payload : UserLogin object, response : Response object, db : database session.
     Return: Message of book added with status code 201.
     """
     try:
-        # user_id = request.state.user.id
+        user_data = request.state.user
+        if not user_data['is_super_user']:
+            raise HTTPException(detail="You are not SuperUser", status_code=status.HTTP_400_BAD_REQUEST)
+        if not user_data['is_verified']:
+            raise HTTPException(detail='You are not verified user', status_code=status.HTTP_400_BAD_REQUEST)
         book_data = payload.model_dump()
-        my_response = rq.get('http://127.0.0.1:8000/auth_user')
-        print(f"Response is {my_response}")
-        user_id = my_response.json()['got_id']
-        print(f"got id is {user_id}")
-        if user_id is None:
-            return {'message' : 'User id is none'}
-        book_data["user_id"] = user_id
-        book = Books(**book_data)
-        book_exists = db.query(Books).filter_by(book_name = book.book_name, author = book.author).one_or_none()
-        if book_exists:
-            response.status_code = status.HTTP_200_OK
-            return {"message": "This book with same author already exists, use update API instead", "status": 200}
-        db.add(book)
+        book_data.update({'user_id': user_data['id']})
+        book_data = Books(**book_data)
+        db.add(book_data)
         db.commit()
-        db.refresh(book)
-        return {"message": "Book Added", "status": 201, "data": book}
+        db.refresh(book_data)
+        return {"message": "Book Added", "status": 201, "data": book_data}
     except Exception as e:
         response.status_code = status.HTTP_400_BAD_REQUEST
         return {"message": str(e)}
 
 @app.get("/get_all_books/{user_id}", status_code=status.HTTP_200_OK, tags=["Books"])
-def read_all_books(user_id: int, response: Response, db: Session = Depends(get_db) ):
+def read_all_books(request: Request, response: Response, db: Session = Depends(get_db) ):
     """
     Description: Get all books of the authenticated user.
     Parameter:request: User Request, response : Response object, db : database session.
     Return: List all books details
     """
     try:
-        # user_id = request.state.user.id
+        user_data = request.state.user
+        user_id = user_data['id']
         books = db.query(Books).filter_by(user_id=user_id).all()
         if not books:
             response.status_code = status.HTTP_404_NOT_FOUND
@@ -61,7 +71,8 @@ def read_book(book_id: int, request: Request, response: Response, db: Session = 
     Return: Details of that one book
     """
     try:
-        user_id = request.state.user.id
+        user_data = request.state.user
+        user_id = user_data['id']
         book = db.query(Books).filter_by(id=book_id, user_id=user_id).first()
         if not book:
             raise HTTPException(detail="Book not found", status_code=status.HTTP_404_NOT_FOUND)
@@ -78,7 +89,8 @@ def update_book(book_id: int, payload: BookSchema, request: Request, response: R
     Return: Message of book updated
     """
     try:
-        user_id = request.state.user.id
+        user_data = request.state.user
+        user_id = user_data['id']
         book = db.query(Books).filter_by(id=book_id, user_id=user_id).first()
         if not book:
             raise HTTPException(detail="Book not found", status_code=status.HTTP_404_NOT_FOUND)
@@ -100,7 +112,8 @@ def delete_book(book_id: int, request: Request, response: Response, db: Session 
     Return: Message of book deleted.
     """
     try:
-        user_id = request.state.user.id
+        user_data = request.state.user
+        user_id = user_data['id']
         book = db.query(Books).filter_by(id=book_id, user_id=user_id).first()
         if not book:
             raise HTTPException(detail="Book not found", status_code=status.HTTP_404_NOT_FOUND)
@@ -119,7 +132,8 @@ def delete_all_books(request: Request, response: Response, db: Session = Depends
     Return: Message of all books deleted.
     """
     try:
-        user_id = request.state.user.id
+        user_data = request.state.user
+        user_id = user_data['id']
         books = db.query(Books).filter_by(user_id=user_id).all()
         if not books:
             raise HTTPException(detail="No books found for the user", status_code=status.HTTP_404_NOT_FOUND)
